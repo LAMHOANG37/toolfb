@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | AI Hôm Nay Có Gì?{% endblock %}
+
+{% block content %}
+<div class="dashboard-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <div>
+        <h1 style="margin: 0; color: var(--color-primary-dark); font-size: 1.75rem;">Tổng quan hôm nay</h1>
+        <p style="margin: 0.25rem 0 0 0; color: var(--color-muted);">Theo dõi luồng tin AI và các bài viết đang chờ xử lý.</p>
+    </div>
+    <button class="btn btn-primary" 
+            hx-post="/api/ingest" 
+            hx-target="#ingest-results" 
+            hx-swap="innerHTML"
+            hx-indicator="#ingest-spinner"
+            onclick="this.disabled=true; this.innerHTML='Đang quét... <span id=\'ingest-spinner\' class=\'htmx-indicator\'>⏳</span>';">
+        Quét tin ngay
+        <span id="ingest-spinner" class="htmx-indicator">⏳</span>
+    </button>
+</div>
+
+<div id="ingest-results"></div>
+
+<div class="metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+    <div class="metric-card" style="padding: 1rem;">
+        <h3 style="font-size: 0.8rem;">Tin mới</h3>
+        <p class="metric-value" style="font-size: 2rem;">{{ new_articles }}</p>
+    </div>
+    <div class="metric-card" style="padding: 1rem;">
+        <h3 style="font-size: 0.8rem;">Sự kiện</h3>
+        <p class="metric-value" style="font-size: 2rem;">{{ story_clusters }}</p>
+    </div>
+    <div class="metric-card" style="padding: 1rem;">
+        <h3 style="font-size: 0.8rem;">Chờ duyệt</h3>
+        <p class="metric-value" style="font-size: 2rem;">{{ drafts_awaiting_review }}</p>
+    </div>
+    <div class="metric-card" style="padding: 1rem;">
+        <h3 style="font-size: 0.8rem;">Chờ đăng</h3>
+        <p class="metric-value" style="font-size: 2rem;">{{ scheduled_posts }}</p>
+    </div>
+    <div class="metric-card" style="padding: 1rem;">
+        <h3 style="font-size: 0.8rem;">Đã đăng hôm nay</h3>
+        <p class="metric-value" style="font-size: 2rem;">{{ published_today }}</p>
+    </div>
+</div>
+
+<div class="dashboard-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+    <!-- LEFT COLUMN -->
+    <div class="dashboard-col-left">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2 style="margin: 0; font-size: 1.25rem;">Tin đáng chú ý</h2>
+            <a href="/news" style="color: var(--color-accent-dark); text-decoration: none; font-size: 0.9rem;">Xem tất cả tin</a>
+        </div>
+        
+        {% if top_stories %}
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                {% for story in top_stories %}
+                <div class="card" style="background: var(--color-surface); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--color-border); box-shadow: var(--shadow);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span style="font-size: 0.75rem; background: #eee; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: bold; color: var(--color-muted);">{{ story.source }}</span>
+                        <span style="font-size: 0.75rem; color: var(--color-muted);">{{ story.time_ago }}</span>
+                    </div>
+                    <h3 style="margin: 0 0 0.5rem 0; font-size: 1.1rem;"><a href="/news/{{ story.id }}" style="color: var(--color-primary-dark); text-decoration: none;">{{ story.title }}</a></h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.8rem; color: var(--color-muted);">{{ story.related_count }} nguồn liên quan</span>
+                        <span style="font-size: 0.75rem; color: var(--color-success); font-weight: bold;">{{ story.status }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div style="background: var(--color-surface); padding: 2rem; border-radius: var(--radius); border: 1px solid var(--color-border); text-align: center; color: var(--color-muted);">
+                Chưa có tin nào.<br>Hãy bấm "Quét tin ngay" để bắt đầu.
+            </div>
+        {% endif %}
+        
+        <div style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2 style="margin: 0; font-size: 1.25rem;">Bài đang chờ xử lý</h2>
+        </div>
+        {% if review_queue %}
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                {% for item in review_queue %}
+                <div class="card" style="background: var(--color-surface); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--color-border); box-shadow: var(--shadow); display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--color-warning); font-weight: bold;">{{ item.type }}</span>
+                        <h4 style="margin: 0.25rem 0 0 0; font-size: 1rem; color: var(--color-primary-dark);">{{ item.title }}</h4>
+                        {% if item.time_str %}<span style="font-size: 0.8rem; color: var(--color-muted);">{{ item.time_str }}</span>{% endif %}
+                    </div>
+                    <a href="{{ item.action_url }}" class="btn" style="background: var(--color-bg); border: 1px solid var(--color-border); padding: 0.4rem 0.8rem; border-radius: 4px; text-decoration: none; color: var(--color-primary-dark); font-size: 0.85rem;">{{ item.action_text }}</a>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div style="background: var(--color-surface); padding: 2rem; border-radius: var(--radius); border: 1px solid var(--color-border); text-align: center; color: var(--color-muted);">
+                Không có bài nào chờ duyệt.
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="dashboard-col-right">
+        <div style="margin-bottom: 2rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="margin: 0; font-size: 1.25rem;">Trạng thái nguồn</h2>
+                <a href="/sources" style="color: var(--color-accent-dark); text-decoration: none; font-size: 0.9rem;">Xem nguồn tin</a>
+            </div>
+            <div style="background: var(--color-surface); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--color-border); box-shadow: var(--shadow);">
+                {% if source_statuses %}
+                    <ul style="list-style: none; padding: 0; margin: 0;">
+                        {% for src in source_statuses %}
+                        <li style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); font-size: 0.9rem;">
+                            <span style="color: var(--color-primary-dark);">{{ src.name }}</span>
+                            {% if src.status == 'Hoạt động' %}
+                            <span style="color: var(--color-success); font-size: 0.8rem;">● Hoạt động</span>
+                            {% else %}
+                            <span style="color: var(--color-error); font-size: 0.8rem;">● Có lỗi</span>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--color-muted); text-align: right;">
+                        Lần quét gần nhất: {{ last_scan_time }}
+                    </div>
+                {% else %}
+                    <div style="text-align: center; color: var(--color-muted); padding: 1rem 0;">Mọi nguồn đang hoạt động bình thường.</div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div>
+            <h2 style="margin: 0 0 1rem 0; font-size: 1.25rem;">Hoạt động gần đây</h2>
+            <div style="background: var(--color-surface); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--color-border); box-shadow: var(--shadow);">
+                {% if recent_activity %}
+                    <ul style="list-style: none; padding: 0; margin: 0;">
+                        {% for activity in recent_activity %}
+                        <li style="margin-bottom: 1rem; font-size: 0.9rem;">
+                            <div style="color: var(--color-muted); font-size: 0.75rem;">{{ activity.time }}</div>
+                            <div style="color: var(--color-primary-dark);">{{ activity.desc }}</div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div style="text-align: center; color: var(--color-muted); padding: 1rem 0;">Chưa có hoạt động.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@media (max-width: 768px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+</style>
+{% endblock %}

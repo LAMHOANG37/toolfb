@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Hôm Nay Có Gì? — Newsroom{% endblock %}</title>
+    <!-- HTMX for dynamic interactions -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="brand-title">AI Hôm Nay Có Gì?</span>
+            <span class="brand-tagline">Tin nhanh. Hiểu đúng. Dùng được.</span>
+        </div>
+        <div class="nav-links">
+            <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Tổng quan</a>
+            <a href="/news" {% if request.url.path == '/news' %}class="active"{% endif %}>Tin tức</a>
+            <a href="/events" {% if request.url.path == '/events' %}class="active"{% endif %}>Sự kiện</a>
+            <a href="/drafts" {% if request.url.path == '/drafts' %}class="active"{% endif %}>Bản nháp</a>
+            <a href="/schedule" {% if request.url.path == '/schedule' %}class="active"{% endif %}>Lịch đăng</a>
+            <a href="/sources" {% if request.url.path == '/sources' %}class="active"{% endif %}>Nguồn tin</a>
+            <a href="/settings" {% if request.url.path == '/settings' %}class="active"{% endif %}>Cài đặt</a>
+        </div>
+    </nav>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
