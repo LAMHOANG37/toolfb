@@ -65,7 +65,7 @@ class RssCollector(BaseCollector):
             # Extract summary
             summary = ""
             if hasattr(entry, 'summary'):
-                summary = BeautifulSoup(entry.summary, "html.parser").get_text(separator="\n", strip=True)
+                summary = BeautifulSoup(entry.summary, "html.parser").get_text(separator='\n', strip=True)
             
             if original_url and clean_text:
                 articles.append(
