@@ -66,7 +66,7 @@ def normalize_title(title: str) -> str:
     
     # Remove common publication suffixes
     # Matches patterns like " - TechCrunch", " | The Verge", " — OpenAI"
-    t = re.sub(r'\s+[-|—]\s+[^|—]+$', '', t)
+    t = re.sub(r'\s+[-|—]\s+(?:techcrunch|the verge|wired|openai|venturebeat|nvidia)\s*$', '', t)
     
     # Replace non-word characters with space, EXCEPT dots and hyphens that are surrounded by word chars
     # We want to preserve things like GPT-4, Llama-3, v2.5

@@ -19,6 +19,7 @@ class Source(Base):
     source_type = Column(Enum(SourceType), nullable=False)
     priority = Column(Integer, default=5)
     active = Column(Boolean, default=True)
+    strategy = Column(String, nullable=False, default="rss")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_success_at = Column(DateTime(timezone=True), nullable=True)
     last_error_at = Column(DateTime(timezone=True), nullable=True)

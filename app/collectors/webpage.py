@@ -1,40 +1,39 @@
-from typing import List, Optional
-from datetime import datetime
-import httpx
+from datetime import datetime, timedelta
+from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
-
 from app.collectors.base import BaseCollector, ExtractedArticle
+from app.services.fetching import fetch_bytes, validate_url
+from app.timeutils import utcnow, aware
+
 
 class WebpageCollector(BaseCollector):
-    def fetch(self, lookback_hours: int = 36) -> List[ExtractedArticle]:
-        # This is a placeholder for a generic webpage scraper.
-        # In MVP, we rely mostly on RSS for official sources.
-        # A real implementation would parse the base_url, find article links, and scrape them.
-        
+    def fetch(self, lookback_hours=36):
+        soup = BeautifulSoup(fetch_bytes(self.base_url), "html.parser")
+        links = []
+        for node in soup.select("a[href]"):
+            url = urljoin(self.base_url, node["href"]).split("#")[0]
+            if urlparse(url).netloc == urlparse(self.base_url).netloc and url != self.base_url and len(node.get_text(strip=True)) > 15 and url not in links:
+                links.append(url)
         articles = []
-        try:
-            # Very basic implementation just fetching the base URL for testing
-            response = httpx.get(self.base_url, timeout=10.0)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
-                # Find all 'a' tags that look like articles, very naive
-                for a in soup.find_all('a', href=True):
-                    href = a['href']
-                    if 'blog' in href or 'news' in href:
-                        # Construct full URL if needed
-                        full_url = href if href.startswith('http') else self.base_url.rstrip('/') + '/' + href.lstrip('/')
-                        title = a.get_text(strip=True)
-                        if title and len(title) > 10:
-                            articles.append(
-                                ExtractedArticle(
-                                    title=title,
-                                    original_url=full_url,
-                                    canonical_url=full_url,
-                                    raw_text="Extracted from webpage. Requires full fetch.",
-                                    published_at=datetime.now() # Mocked
-                                )
-                            )
-        except Exception as e:
-            print(f"Error fetching {self.base_url}: {e}")
-            
-        return articles[:5] # Limit for MVP placeholder
+        for url in links[:12]:
+            try:
+                page = BeautifulSoup(fetch_bytes(url), "html.parser")
+                body = page.select_one("article") or page.select_one("main")
+                title = page.select_one("h1")
+                stamp = page.select_one('meta[property="article:published_time"]') or page.select_one("time[datetime]")
+                if not body or not title or not stamp:
+                    continue  # Never invent a publication time or article body.
+                published = aware(datetime.fromisoformat((stamp.get("content") or stamp.get("datetime")).replace("Z", "+00:00")))
+                if not utcnow() - timedelta(hours=lookback_hours) <= published <= utcnow() + timedelta(minutes=10):
+                    continue
+                text = "\n".join(p.get_text(" ", strip=True) for p in body.select("p"))
+                if len(text) < 100:
+                    continue
+                canonical = page.select_one('link[rel="canonical"]')
+                canonical_url = urljoin(url, canonical["href"]) if canonical and canonical.get("href") else url
+                validate_url(canonical_url)
+                articles.append(ExtractedArticle(title=title.get_text(" ", strip=True), original_url=url,
+                    canonical_url=canonical_url, raw_text=text, published_at=published, source_name=self.source_name))
+            except (ValueError, KeyError):
+                continue
+        return articles

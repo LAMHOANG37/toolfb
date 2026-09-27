@@ -1,103 +1,61 @@
-import httpx
-import pytest
+from datetime import timedelta
+from email.utils import format_datetime
+from app.models import Source, Article
+from app.models.source import SourceType
+from app.collectors.base import ExtractedArticle
+from app.collectors.rss import RssCollector
 from app.services.ingestion import IngestionService
-from app.models.article import Article
-from app.models.source import Source
-from tests.test_main import TestingSessionLocal, engine, Base
+from app.collectors.source_registry import SourceRegistry
+from app.timeutils import utcnow, aware
 
-# Ensure models are loaded before create_all
-from app.models.source import Source
-from app.models.article import Article
-from app.models.story_cluster import StoryCluster
-from app.models.draft import Draft
-from app.models.post import Post
-from app.models.publish_job import PublishJob
 
-Base.metadata.drop_all(bind=engine)
-Base.metadata.create_all(bind=engine)
+def test_rss_utc_and_cutoff(monkeypatch):
+    stamp = utcnow().replace(microsecond=0)
+    xml = f'<rss version="2.0"><channel><title>News</title><item><title>New AI</title><link>https://example.com/new</link><description>Text</description><pubDate>{format_datetime(stamp)}</pubDate></item><item><title>Old</title><link>https://example.com/old</link><pubDate>{format_datetime(stamp-timedelta(days=3))}</pubDate></item></channel></rss>'
+    monkeypatch.setattr("app.collectors.rss.fetch_bytes", lambda url: xml.encode())
+    articles = RssCollector("Test", "https://example.com", "https://example.com/rss").fetch()
+    assert len(articles) == 1
+    assert articles[0].published_at == stamp
 
-class MockResponse:
-    def __init__(self, content, status_code=200):
-        self.content = content
-        self.status_code = status_code
-        
-    def raise_for_status(self):
-        if self.status_code >= 400:
-            raise httpx.HTTPStatusError("Error", request=None, response=self)
 
-MOCK_RSS_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-  <channel>
-    <title>Mock AI News</title>
-    <item>
-      <title>GPT-5 Announced</title>
-      <link>https://example.com/gpt5?utm_source=test</link>
-      <description>OpenAI announces GPT-5.</description>
-      <pubDate>Mon, 01 Jan 2026 00:00:00 GMT</pubDate>
-    </item>
-  </channel>
-</rss>
-"""
+def test_ingestion_idempotence_and_recovery(db, seed, monkeypatch):
+    source, cluster, existing = seed
+    existing.story_cluster_id = None
+    cluster.primary_article_id = None
+    db.commit()
+    monkeypatch.setattr(RssCollector, "fetch", lambda self, **kw: [
+        ExtractedArticle(title="New unique topic", original_url="https://example.com/new?utm_source=x",
+            canonical_url="https://example.com/new?utm_source=x", raw_text="Actual text")])
+    service = IngestionService(db)
+    first = service.run()
+    second = service.run()
+    assert first["new_articles"] == 1
+    assert second["new_articles"] == 0
+    assert second["duplicates_skipped"] == 1
+    db.refresh(existing)
+    assert existing.story_cluster_id is not None
 
-class MockHttpxClient:
-    def __init__(self, *args, **kwargs):
-        pass
-    def __enter__(self):
-        return self
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-    def get(self, url, *args, **kwargs):
-        if "error" in url:
-            raise httpx.RequestError("Mock network error")
-        return MockResponse(MOCK_RSS_XML)
 
-def test_ingestion_service(monkeypatch):
-    monkeypatch.setattr("httpx.Client", MockHttpxClient)
-    
-    db = TestingSessionLocal()
-    try:
-        # Clear tables for test isolation
-        db.query(Article).delete()
-        db.query(StoryCluster).delete()
-        db.query(Source).delete()
-        db.commit()
-        
-        s1 = Source(name="Valid Source", base_url="https://valid.com", feed_url="https://valid.com/rss", source_type="official")
-        s2 = Source(name="Error Source", base_url="https://error.com", feed_url="https://error.com/rss", source_type="official")
-        db.add_all([s1, s2])
-        db.commit()
-        
-        service = IngestionService(db)
-        
-        # Test 1: First run
-        stats = service.run(lookback_hours=999999)
-        
-        assert stats["sources_scanned"] == 2
-        assert stats["articles_fetched"] == 1 # only 1 valid source returns 1 item
-        assert stats["new_articles"] == 1
-        assert stats["errors"] == 1
-        
-        # Verify article was stored and normalized
-        articles = db.query(Article).all()
-        assert len(articles) == 1
-        assert articles[0].title == "GPT-5 Announced"
-        assert articles[0].original_url == "https://example.com/gpt5?utm_source=test"
-        assert articles[0].canonical_url == "https://example.com/gpt5" # Normalized!
-        assert articles[0].status.value.lower() == "discovered"
-        
-        # Verify source isolation / health
-        sources = db.query(Source).order_by(Source.name).all()
-        err_source = [s for s in sources if s.name == "Error Source"][0]
-        val_source = [s for s in sources if s.name == "Valid Source"][0]
-        
-        assert err_source.last_error_at is not None
-        assert err_source.last_error_message is not None
-        assert val_source.last_success_at is not None
-        
-        # Test 2: Duplicate prevention
-        stats_2 = service.run(lookback_hours=999999)
-        assert stats_2["new_articles"] == 0
-        assert stats_2["duplicates_skipped"] == 1
-        
-    finally:
-        db.close()
+def test_source_error_does_not_stop_next_source(db, monkeypatch):
+    for name in ["Bad", "Good"]:
+        db.add(Source(name=name, base_url="https://example.com", feed_url="https://example.com/rss",
+            source_type=SourceType.OFFICIAL, strategy="rss"))
+    db.commit()
+    def fetch(self, **kw):
+        if self.source_name == "Bad":
+            raise ValueError("boom")
+        return [ExtractedArticle(title="Good", original_url="https://example.com/good", canonical_url="https://example.com/good")]
+    monkeypatch.setattr(RssCollector, "fetch", fetch)
+    result = IngestionService(db).run()
+    assert result["errors"] == 1 and result["new_articles"] == 1
+    assert db.query(Source).filter_by(name="Bad").one().last_error_message
+
+
+def test_yaml_honors_active_type_strategy(db, tmp_path):
+    config = tmp_path / "sources.yaml"
+    config.write_text('sources:\n  - name: Official\n    base_url: https://example.com\n    strategy: webpage\n    type: official\n    active: false\n', encoding="utf-8")
+    SourceRegistry(config).sync_with_db(db)
+    source = db.query(Source).one()
+    assert not source.active
+    assert source.source_type == SourceType.OFFICIAL
+    assert source.strategy == "webpage"

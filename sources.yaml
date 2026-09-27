@@ -1,70 +1,69 @@
+# Imported once on first startup. UI edits persist until an explicit YAML reimport.
 sources:
-  - name: "OpenAI Blog"
-    base_url: "https://openai.com/blog"
-    feed_url: "https://openai.com/blog/rss.xml"
-    strategy: "rss"
+  - name: OpenAI Blog
+    base_url: https://openai.com/news/
+    feed_url: https://openai.com/news/rss.xml
+    strategy: rss
+    type: official
     priority: 10
     active: true
-
-  - name: "Google DeepMind"
-    base_url: "https://deepmind.google/blog"
-    feed_url: "https://deepmind.google/blog/rss.xml"
-    strategy: "rss"
+  - name: Google DeepMind
+    base_url: https://deepmind.google/blog/
+    feed_url: https://deepmind.google/blog/rss.xml
+    strategy: rss
+    type: official
     priority: 10
     active: true
-
-  - name: "Anthropic News"
-    base_url: "https://www.anthropic.com/news"
-    feed_url: "https://www.anthropic.com/feed.xml"
-    strategy: "rss"
+  - name: Anthropic News
+    base_url: https://www.anthropic.com/news
+    strategy: webpage
+    type: official
     priority: 10
     active: true
-
-  - name: "Hugging Face Blog"
-    base_url: "https://huggingface.co/blog"
-    feed_url: "https://huggingface.co/blog/feed.xml"
-    strategy: "rss"
+  - name: Hugging Face Blog
+    base_url: https://huggingface.co/blog
+    feed_url: https://huggingface.co/blog/feed.xml
+    strategy: rss
+    type: official
     priority: 8
     active: true
-
-  - name: "Meta AI News"
-    base_url: "https://ai.meta.com/blog/"
-    feed_url: "https://ai.meta.com/blog/rss/"
-    strategy: "rss"
+  - name: Meta AI News
+    base_url: https://ai.meta.com/blog/
+    strategy: webpage
+    type: official
     priority: 9
     active: true
-
-  - name: "Microsoft AI Blog"
-    base_url: "https://blogs.microsoft.com/ai/"
-    feed_url: "https://blogs.microsoft.com/ai/feed/"
-    strategy: "rss"
+  - name: Microsoft AI Blog
+    base_url: https://blogs.microsoft.com/ai/
+    feed_url: https://blogs.microsoft.com/ai/feed/
+    strategy: rss
+    type: official
     priority: 9
     active: true
-
-  - name: "TechCrunch AI"
-    base_url: "https://techcrunch.com/category/artificial-intelligence/"
-    feed_url: "https://techcrunch.com/category/artificial-intelligence/feed/"
-    strategy: "rss"
+  - name: TechCrunch AI
+    base_url: https://techcrunch.com/category/artificial-intelligence/
+    feed_url: https://techcrunch.com/category/artificial-intelligence/feed/
+    strategy: rss
+    type: publication
     priority: 7
     active: true
-
-  - name: "VentureBeat AI"
-    base_url: "https://venturebeat.com/category/ai/"
-    feed_url: "https://venturebeat.com/category/ai/feed/"
-    strategy: "rss"
+  - name: VentureBeat AI
+    base_url: https://venturebeat.com/category/ai/
+    feed_url: https://venturebeat.com/category/ai/feed/
+    strategy: rss
+    type: publication
     priority: 7
     active: true
-
-  - name: "The Verge AI"
-    base_url: "https://www.theverge.com/ai-artificial-intelligence"
-    feed_url: ""
-    strategy: "webpage" # No direct RSS for just AI category usually, or requires specific setup
+  - name: The Verge AI
+    base_url: https://www.theverge.com/ai-artificial-intelligence
+    strategy: webpage
+    type: publication
     priority: 7
     active: true
-
-  - name: "NVIDIA Blog"
-    base_url: "https://blogs.nvidia.com/"
-    feed_url: "https://blogs.nvidia.com/feed/"
-    strategy: "rss"
+  - name: NVIDIA Blog
+    base_url: https://blogs.nvidia.com/
+    feed_url: https://blogs.nvidia.com/feed/
+    strategy: rss
+    type: official
     priority: 8
     active: true

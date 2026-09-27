@@ -15,7 +15,7 @@ class StoryCluster(Base):
     relevance_score = Column(Float, nullable=True)
     confidence_score = Column(Float, nullable=True)
     verification_status = Column(String, default="pending")
-    primary_article_id = Column(Integer, ForeignKey("articles.id"), nullable=True)
+    primary_article_id = Column(Integer, ForeignKey("articles.id", use_alter=True, name="fk_cluster_primary_article"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # One-to-Many

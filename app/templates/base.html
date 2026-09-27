@@ -1,31 +1,17 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}AI Hôm Nay Có Gì? — Newsroom{% endblock %}</title>
-    <!-- HTMX for dynamic interactions -->
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
-</head>
-<body>
-    <nav class="navbar">
-        <div class="nav-brand">
-            <span class="brand-title">AI Hôm Nay Có Gì?</span>
-            <span class="brand-tagline">Tin nhanh. Hiểu đúng. Dùng được.</span>
-        </div>
-        <div class="nav-links">
-            <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Tổng quan</a>
-            <a href="/news" {% if request.url.path == '/news' %}class="active"{% endif %}>Tin tức</a>
-            <a href="/events" {% if request.url.path == '/events' %}class="active"{% endif %}>Sự kiện</a>
-            <a href="/drafts" {% if request.url.path == '/drafts' %}class="active"{% endif %}>Bản nháp</a>
-            <a href="/schedule" {% if request.url.path == '/schedule' %}class="active"{% endif %}>Lịch đăng</a>
-            <a href="/sources" {% if request.url.path == '/sources' %}class="active"{% endif %}>Nguồn tin</a>
-            <a href="/settings" {% if request.url.path == '/settings' %}class="active"{% endif %}>Cài đặt</a>
-        </div>
-    </nav>
-    <main class="container">
-        {% block content %}{% endblock %}
-    </main>
-</body>
-</html>
+<!doctype html><html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}AI Hôm Nay Có Gì?{% endblock %} · Newsroom</title>
+<link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+<script src="{{ url_for('static', path='app.js') }}" defer></script></head><body>
+<a class="skip" href="#main">Đến nội dung</a>
+{% from "macros.html" import tokens with context %}
+<header class="navbar"><a href="/" class="brand"><span class="brand-icon">AI</span><span>Hôm Nay Có Gì?<small>NEWSROOM · Tin nhanh. Hiểu đúng. Dùng được.</small></span></a>
+{% if request.session.get('user') %}<nav aria-label="Điều hướng chính">
+{% for path,label in [('/', 'Tổng quan'),('/news','Tin tức'),('/events','Sự kiện'),('/drafts','Bản nháp'),('/schedule','Lịch đăng'),('/sources','Nguồn tin'),('/settings','Cài đặt')] %}
+<a href="{{ path }}" {% if request.url.path == path or (path != '/' and request.url.path.startswith(path+'/')) %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+<form method="post" action="/logout">{{ tokens() }}<button class="quiet">Đăng xuất</button></form>{% endif %}</header>
+<main id="main" class="container">
+{% if request.session.get('user') %}<div class="mode-line"><span class="dot"></span>{{ 'Chế độ đăng thử · Không gửi bài lên Facebook' if settings.facebook_dry_run else 'Chế độ đăng thật · Chỉ đăng bản đã duyệt và lên lịch' }}<span>{{ settings.timezone }}</span></div>{% endif %}
+{% if flash %}<div class="notice" role="status">{{ flash }}</div>{% endif %}
+{% if request.query_params.get('operation') %}<div class="notice" id="operation-status" role="status" aria-live="polite" data-operation="{{ request.query_params.get('operation') }}">Đang xử lý tác vụ…</div>{% endif %}
+{% block content %}{% endblock %}</main><footer>AI Hôm Nay Có Gì? · Biên tập có nguồn, xuất bản có kiểm soát.</footer></body></html>

@@ -27,6 +27,9 @@ class Draft(Base):
     source_label = Column(String, nullable=True)
     source_urls = Column(String, nullable=True) # JSON encoded list of URLs
     social_card_path = Column(String, nullable=True)
+    verification_notes = Column(Text, nullable=True)
+    revision = Column(Integer, nullable=False, default=1)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(Enum(DraftStatus), default=DraftStatus.GENERATED, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

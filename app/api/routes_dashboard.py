@@ -1,107 +1,55 @@
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends, Request, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timezone, timedelta
-import yaml
-
 from app.database import get_db
-from app.models.article import Article
-from app.models.story_cluster import StoryCluster
-from app.models.draft import Draft
-from app.models.publish_job import PublishJob
-from app.services.ingestion import IngestionService
+from app.models import Article, StoryCluster, Draft, PublishJob, Post, Source, Operation, Activity
+from app.models.draft import DraftStatus
+from app.models.publish_job import JobStatus
+from app.services.operations import enqueue, run_operation
+from app.web import render, redirect
+from app.timeutils import utcnow
+from app.config import settings
+from zoneinfo import ZoneInfo
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+
 
 @router.get("/")
 def dashboard_home(request: Request, db: Session = Depends(get_db)):
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    # Fetch recent articles for 'Tin đáng chú ý'
-    recent_articles = db.query(Article).order_by(Article.published_at.desc()).limit(5).all()
-    top_stories = []
-    for art in recent_articles:
-        if art.published_at:
-            time_diff = datetime.now(timezone.utc) - art.published_at.replace(tzinfo=timezone.utc)
-            minutes = int(time_diff.total_seconds() / 60)
-            if minutes < 60:
-                time_ago = f"{minutes} phút trước"
-            elif minutes < 1440:
-                time_ago = f"{minutes // 60} giờ trước"
-            else:
-                time_ago = f"{minutes // 1440} ngày trước"
-        else:
-            time_ago = "Vừa xong"
-            
-        top_stories.append({
-            "id": art.id,
-            "source": getattr(art.source, 'name', 'Unknown Source') if art.source else 'Unknown Source',
-            "time_ago": time_ago,
-            "title": art.title,
-            "related_count": "1", # Future: implement clustering relations count
-            "status": "Mới" if art.status == 'DISCOVERED' else "Đã phân tích"
-        })
-
-    # Fetch sources status
-    try:
-        with open("sources.yaml", "r", encoding="utf-8") as f:
-            sources_config = yaml.safe_load(f)
-            sources = sources_config.get("sources", [])
-    except Exception:
-        sources = []
-        
-    source_statuses = []
-    for s in sources[:5]: # Show top 5 sources
-        source_statuses.append({
-            "name": s.get("name", "Unknown"),
-            "status": "Hoạt động"
-        })
-        
-    last_scan_time = datetime.now().strftime("%H:%M") # In real app, query latest ingestion job log
-    
-    context = {
-        "request": request,
-        "articles_collected": db.query(func.count(Article.id)).scalar(),
-        "new_articles": db.query(func.count(Article.id)).filter(Article.status == 'DISCOVERED').scalar(),
-        "story_clusters": db.query(func.count(StoryCluster.id)).scalar(),
-        "drafts_awaiting_review": db.query(func.count(Draft.id)).filter(Draft.status == 'pending_review').scalar(),
-        "scheduled_posts": db.query(func.count(PublishJob.id)).filter(PublishJob.status == 'pending').scalar(),
-        "published_today": db.query(func.count(PublishJob.id)).filter(PublishJob.status == 'successful', PublishJob.scheduled_at >= today_start).scalar(),
-        "errors_count": db.query(func.count(PublishJob.id)).filter(PublishJob.status == 'failed').scalar(),
-        
-        "top_stories": top_stories,
-        "review_queue": [],
-        "source_statuses": source_statuses,
-        "last_scan_time": last_scan_time,
-        "recent_activity": []
+    today = utcnow().astimezone(ZoneInfo(settings.timezone)).replace(hour=0, minute=0, second=0, microsecond=0)
+    stats = {
+        "Tin đã thu thập": db.query(Article).count(),
+        "Sự kiện": db.query(StoryCluster).count(),
+        "Chờ duyệt": db.query(Draft).filter(Draft.status.in_([DraftStatus.GENERATED, DraftStatus.NEEDS_REVIEW])).count(),
+        "Chờ đăng": db.query(PublishJob).filter_by(status=JobStatus.PENDING).count(),
+        "Đã đăng hôm nay": db.query(Post).filter(Post.published_at >= today).count(),
     }
-    return templates.TemplateResponse(
-        request=request, name="dashboard.html", context=context
-    )
+    return render(request, "dashboard.html", stats=stats,
+        articles=db.query(Article).order_by(Article.fetched_at.desc()).limit(6).all(),
+        drafts=db.query(Draft).filter(Draft.status.in_([DraftStatus.GENERATED, DraftStatus.NEEDS_REVIEW])).order_by(Draft.id.desc()).limit(5).all(),
+        sources=db.query(Source).order_by(Source.priority.desc()).limit(6).all(),
+        operations=db.query(Operation).order_by(Operation.id.desc()).limit(8).all(),
+        activities=db.query(Activity).order_by(Activity.id.desc()).limit(8).all(),
+        attention=db.query(PublishJob).filter(PublishJob.status.in_([JobStatus.FAILED, JobStatus.UNCERTAIN])).count())
+
 
 @router.post("/api/ingest")
-def trigger_ingestion(request: Request, db: Session = Depends(get_db)):
-    service = IngestionService(db)
-    # Sync first to ensure we have latest from yaml
-    service.registry.sync_with_db(db)
-    stats = service.run(lookback_hours=36)
-    
-    errors_html = f"<li>Lỗi: <strong>{stats['errors']}</strong></li>" if stats['errors'] > 0 else ""
-    error_header = f" và {stats['errors']} lỗi" if stats['errors'] > 0 else ""
-    
-    html = (
-        '<div class="alert" style="background-color: var(--color-surface); padding: 1.5rem; border-radius: var(--radius); border: 1px solid var(--color-success); box-shadow: var(--shadow); margin-bottom: 2rem;">'
-        '<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">'
-        '<span style="font-size: 1.5rem; color: var(--color-success);">✓</span>'
-        '<strong style="font-size: 1.1rem; color: var(--color-primary-dark);">Quét tin hoàn tất</strong>'
-        '</div>'
-        '<p style="margin: 0 0 0 2.25rem; color: var(--color-muted);">'
-        f'Đã quét {stats["sources_scanned"]} nguồn. Có {stats["articles_fetched"]} bài được đọc. '
-        f'Tìm thấy {stats["new_articles"]} tin mới{error_header}.'
-        '</p>'
-        '</div>'
-    )
-    return HTMLResponse(content=html)
+def trigger_ingestion(request: Request, background: BackgroundTasks, db: Session = Depends(get_db)):
+    operation = enqueue(db, "ingest", "ingest")
+    background.add_task(run_operation, operation.id)
+    return redirect(request, f"/?operation={operation.id}", "Đã bắt đầu quét tin. Kết quả tự cập nhật khi hoàn tất.")
+
+
+@router.get("/api/operations/{operation_id}")
+def operation_status(operation_id: int, db: Session = Depends(get_db)):
+    operation = db.get(Operation, operation_id)
+    if not operation:
+        raise HTTPException(404, "Không tìm thấy tác vụ.")
+    return {"id": operation.id, "status": operation.status, "detail": operation.detail}
+
+
+@router.get("/settings")
+def settings_page(request: Request):
+    from app.services.publishing import facebook_configured
+    return render(request, "settings.html", facebook_ready=facebook_configured(),
+        llm_ready=bool(settings.llm_model and (settings.openai_api_key.get_secret_value() if settings.llm_provider == "openai" else settings.gemini_api_key.get_secret_value())))

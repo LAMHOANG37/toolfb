@@ -1,42 +1,37 @@
 import yaml
-from sqlalchemy.orm import Session
+from app.config import ROOT
 from app.models.source import Source, SourceType
+from app.services.fetching import validate_url
+
 
 class SourceRegistry:
-    def __init__(self, config_path: str = "sources.yaml"):
-        self.config_path = config_path
+    def __init__(self, config_path=None):
+        self.config_path = config_path or ROOT / "sources.yaml"
 
-    def load_sources_from_yaml(self) -> list[dict]:
-        try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                return data.get("sources", [])
-        except FileNotFoundError:
-            return []
+    def load_sources_from_yaml(self):
+        with open(self.config_path, encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+        return data.get("sources", [])
 
-    def sync_with_db(self, db: Session):
-        yaml_sources = self.load_sources_from_yaml()
-        
-        for s in yaml_sources:
-            # Check if source exists
-            db_source = db.query(Source).filter(Source.name == s["name"]).first()
-            if not db_source:
-                db_source = Source(
-                    name=s["name"],
-                    base_url=s["base_url"],
-                    feed_url=s.get("feed_url"),
-                    source_type=SourceType(s.get("type", "community")),
-                    priority=s.get("priority", 5),
-                    active=True
-                )
-                db.add(db_source)
-            else:
-                db_source.base_url = s["base_url"]
-                db_source.feed_url = s.get("feed_url")
-                db_source.source_type = SourceType(s.get("type", "community"))
-                db_source.priority = s.get("priority", 5)
-        
+    def sync_with_db(self, db):
+        for item in self.load_sources_from_yaml():
+            validate_url(item["base_url"])
+            strategy = item.get("strategy", "rss")
+            if strategy not in {"rss", "webpage"}:
+                raise ValueError("Chiến lược nguồn không hợp lệ.")
+            if strategy == "rss":
+                validate_url(item.get("feed_url", ""))
+            source = db.query(Source).filter_by(name=item["name"]).first()
+            if source is None:
+                source = Source(name=item["name"])
+                db.add(source)
+            source.base_url = item["base_url"]
+            source.feed_url = item.get("feed_url") or None
+            source.source_type = SourceType(item.get("type", "community"))
+            source.priority = int(item.get("priority", 5))
+            source.active = bool(item.get("active", True))
+            source.strategy = strategy
         db.commit()
 
-    def get_active_sources(self, db: Session) -> list[Source]:
-        return db.query(Source).filter(Source.active == True).all()
+    def get_active_sources(self, db):
+        return db.query(Source).filter(Source.active.is_(True)).order_by(Source.priority.desc(), Source.id).all()

@@ -1,0 +1,12 @@
+{% macro tokens(revision=None) -%}
+<input type="hidden" name="csrf_token" value="{{ request.session.get('csrf', '') }}">
+{% if revision is not none %}<input type="hidden" name="revision" value="{{ revision }}">{% endif %}
+{%- endmacro %}
+{% macro badge(value) -%}<span class="badge {{ value.value if value.value is defined else value }}">{{ value|label }}</span>{%- endmacro %}
+{% macro pagination(page,pages) %}
+<nav class="pagination" aria-label="Phân trang">
+{% if page > 1 %}<a class="button secondary" href="{{ request.url.include_query_params(page=page-1) }}">← Trang trước</a>{% endif %}
+<span>Trang {{ page }} / {{ pages }}</span>
+{% if page < pages %}<a class="button secondary" href="{{ request.url.include_query_params(page=page+1) }}">Trang sau →</a>{% endif %}
+</nav>
+{% endmacro %}
